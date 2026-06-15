@@ -109,6 +109,61 @@ function transformPippiThespians(rows) {
   })
 }
 
+// ── Decay timer (ветшание) ───────────────────────────────────────────────────
+// Per-owner most-urgent decay, ported from the reference C# (ConanDb.cs):
+//   serverruntime  = current server time in seconds (dw_settings)
+//   DecayTimestamp = 16-byte blob, float32 LE at offset 12 = decay_at (server-seconds)
+//   DecayDisabled  = last byte 0x01 => decay off (protected)
+//   hours_left     = (decay_at - serverruntime) / 3600
+// Result: { [ownerId]: { hours: <min hours_left|null>, protected: <bool> } }
+function computeDecay (db) {
+  try {
+    let serverRuntime = 0
+    const rt = db.prepare("SELECT CAST(value AS REAL) AS v FROM dw_settings WHERE name='serverruntime'").get()
+    if (rt && rt.v != null) serverRuntime = Number(rt.v)
+
+    const ownerOf = new Map()
+    for (const r of db.prepare('SELECT object_id, owner_id FROM buildings WHERE owner_id <> 0').all()) {
+      ownerOf.set(r.object_id, r.owner_id)
+    }
+
+    const decayAt = new Map()
+    const protectedActors = new Set()
+    for (const r of db.prepare("SELECT object_id, value FROM properties WHERE name LIKE '%.DecayTimestamp'").all()) {
+      if (r.value == null) continue
+      const b = Buffer.isBuffer(r.value) ? r.value : Buffer.from(r.value)
+      if (b.length !== 16) { protectedActors.add(r.object_id); continue }
+      const ts = b.readFloatLE(12)
+      if (!Number.isFinite(ts) || ts <= 0 || ts >= 1e10) protectedActors.add(r.object_id)
+      else decayAt.set(r.object_id, ts)
+    }
+    for (const r of db.prepare("SELECT object_id, value FROM properties WHERE name LIKE '%.DecayDisabled'").all()) {
+      if (r.value == null) continue
+      const b = Buffer.isBuffer(r.value) ? r.value : Buffer.from(r.value)
+      if (b.length > 0 && b[b.length - 1] === 1) protectedActors.add(r.object_id)
+    }
+
+    const byOwner = {}
+    for (const [objId, ownerId] of ownerOf) {
+      let e = byOwner[ownerId]
+      if (!e) e = byOwner[ownerId] = { hours: null, protected: true }
+      if (protectedActors.has(objId)) continue
+      const at = decayAt.get(objId)
+      if (at === undefined) continue        // no decay info => leave as protected
+      const hours = (at - serverRuntime) / 3600
+      e.protected = false
+      if (e.hours === null || hours < e.hours) e.hours = hours
+    }
+    for (const k of Object.keys(byOwner)) {
+      if (byOwner[k].hours !== null) byOwner[k].hours = Math.round(byOwner[k].hours * 10) / 10
+    }
+    return byOwner
+  } catch (e) {
+    console.error('Decay computation failed:', e.message)
+    return {}
+  }
+}
+
 // ── Snapshot service factory ─────────────────────────────────────────────────
 
 export function createSnapshotService(servers) {
@@ -140,14 +195,6 @@ export function createSnapshotService(servers) {
       throw Object.assign(new Error('Refresh already in progress'), { code: 'REFRESHING' })
     }
 
-    if (existing?.timestamp) {
-      const elapsed = (Date.now() - new Date(existing.timestamp).getTime()) / 1000
-      if (elapsed < serverCfg.refreshCooldown) {
-        const retryAfter = Math.ceil(serverCfg.refreshCooldown - elapsed)
-        throw Object.assign(new Error('Cooldown active'), { code: 'COOLDOWN', retryAfter })
-      }
-    }
-
     _snapshots.set(serverId, { ...existing, refreshing: true })
 
     try {
@@ -177,6 +224,7 @@ export function createSnapshotService(servers) {
           pets:           transformPets(run(queries.pets)),
           thralls:        transformThralls(run(queries.thralls)),
           pippiThespians: transformPippiThespians(run(queries.pippiThespians)),
+          decay:          computeDecay(db),
         }
       } finally {
         db.close()

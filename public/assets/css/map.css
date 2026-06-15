@@ -84,6 +84,8 @@ html, body {
   position: relative;
 }
 
+.sb-btn svg { width: 22px; height: 22px; display: block; }
+
 .sb-btn:hover {
   background: var(--btn-hover);
   border-color: var(--border-hover);
@@ -484,10 +486,12 @@ html, body {
 .clan-act-dot.green  { background: var(--success); }
 .clan-act-dot.yellow { background: var(--warning); }
 .clan-act-dot.grey   { background: var(--text-muted); }
+.clan-act-dot.red    { background: var(--danger); }
 .clan-act-label { font-size: 12px; }
 .clan-act-label.green  { color: var(--success); }
 .clan-act-label.yellow { color: var(--warning); }
 .clan-act-label.grey   { color: var(--text-muted); }
+.clan-act-label.red    { color: var(--danger); }
 .clan-count-badge {
   font-family: var(--font-mono);
   font-size: 11px;

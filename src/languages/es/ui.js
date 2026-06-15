@@ -59,5 +59,6 @@ export default {
   "sort_by_count": "Por cantidad",
   "sort_by_name": "Por nombre",
   "sort_by_activity": "Por actividad",
+  "sort_by_decay": "Por deterioro",
   "search_fields": "Buscar: nombre, clan, facción, tipo"
 }
