@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>Conan Exiles Admin Map</title>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no"/>
+    <link rel="stylesheet" href="https://npmcdn.com/leaflet@1.3.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/map.css" />
+    <script>window.language = <%- language %></script>
+  </head>
+  <body onload="init()">
+
+    <div id="app">
+
+      <!-- ── Sidebar ── -->
+      <nav id="sidebar">
+        <div class="sidebar-nav">
+          <button class="sb-btn" data-panel="players" title="<%= lang['ui.player_list'] %>">👤</button>
+          <button class="sb-btn" data-panel="filters" title="<%= lang['ui.filters'] %>">◈</button>
+          <button class="sb-btn" data-panel="search" title="<%= lang['ui.search'] %>">🔍</button>
+          <button class="sb-btn" data-panel="clans" title="<%= lang['ui.structures'] %>">⚑</button>
+          <button class="sb-btn" data-panel="servers" title="<%= lang['ui.servers'] %>">🖥</button>
+        </div>
+        <div class="sidebar-spacer"></div>
+        <button class="sb-btn" data-panel="settings" title="<%= lang['ui.settings'] %>">⚙</button>
+      </nav>
+
+      <!-- ── Map + panels ── -->
+      <div id="map-container">
+        <div id="map"></div>
+
+        <!-- Map switch (top center) -->
+        <div id="map-topbar">
+          <div class="seg">
+            <button class="seg-btn map-btn active" data-map="exiledlands">Изгнанники</button>
+            <button class="seg-btn map-btn"        data-map="siptah">Остров Сиптах</button>
+          </div>
+        </div>
+
+        <!-- Filters panel -->
+        <div id="panel-filters" class="overlay-panel">
+          <div class="panel-header">
+            <span class="panel-title"><%= lang['ui.filters'] %></span>
+            <button class="panel-close">✕</button>
+          </div>
+          <div class="panel-body">
+            <div class="filter-group">
+              <div class="filter-group-label"><%= lang['ui.buildings'] %></div>
+              <label class="filter-item" id="crafting-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.crafting'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="altars-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.altars'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="thrones-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.thrones'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="animalpens-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.animal_pens'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="beds-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.beds'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="buildings-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.buildings'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="campfires-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.campfires'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="chests-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.chests'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="maprooms-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.map_rooms'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="trebuchets-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.trebuchets'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="vaults-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.vaults'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="waterwells-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.water_wells'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="wheelsofpain-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.wheels_of_pain'] %></span><span class="filter-count"></span></label>
+            </div>
+            <div class="filter-group">
+              <div class="filter-group-label"><%= lang['ui.crab_pots'] %></div>
+              <label class="filter-item" id="crabpots-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.crab_pots'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="fishnets-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.fish_nets'] %></span><span class="filter-count"></span></label>
+            </div>
+            <div class="filter-group">
+              <div class="filter-group-label"><%= lang['ui.players'] %></div>
+              <label class="filter-item" id="players-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.players'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="pets-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.pets'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="thralls-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.thralls'] %></span><span class="filter-count"></span></label>
+            </div>
+            <div class="filter-group">
+              <div class="filter-group-label">Pippi</div>
+              <label class="filter-item" id="pippi_all-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.pippi_all'] %></span><span class="filter-count"></span></label>
+              <label class="filter-item" id="pippi_thespians-filter"><span class="filter-check">✓</span><span class="filter-text"><%= lang['ui.pippi_thespians'] %></span><span class="filter-count"></span></label>
+            </div>
+            <button id="reset-filters" class="reset-btn" onclick="resetFilters(); return false;"><%= lang['ui.reset_filters'] %></button>
+          </div>
+        </div>
+
+        <!-- Clans panel -->
+        <div id="panel-clans" class="overlay-panel">
+          <div class="panel-header">
+            <span class="panel-title"><%= lang['ui.structures'] %></span>
+            <button class="panel-close">✕</button>
+          </div>
+          <div class="panel-body">
+            <input type="text" id="clan-filter-search" class="clan-search" placeholder="<%= lang['ui.search'] %>">
+            <div class="clan-sort-row">
+              <button class="clan-sort-btn active" data-sort="count"><%= lang['ui.sort_by_count'] %> ↓</button>
+              <button class="clan-sort-btn" data-sort="name"><%= lang['ui.sort_by_name'] %></button>
+              <button class="clan-sort-btn" data-sort="activity"><%= lang['ui.sort_by_activity'] %></button>
+            </div>
+            <div class="clan-divider"></div>
+            <div id="clan-filter-menu"></div>
+          </div>
+        </div>
+
+        <!-- Servers panel -->
+        <div id="panel-servers" class="overlay-panel">
+          <div class="panel-header">
+            <span class="panel-title"><%= lang['ui.servers'] %></span>
+            <button class="panel-close">✕</button>
+          </div>
+          <div class="panel-body">
+            <div id="servers-list"></div>
+          </div>
+        </div>
+
+        <!-- Players panel -->
+        <div id="panel-players" class="overlay-panel overlay-panel--wide">
+          <div class="panel-header">
+            <span class="panel-title"><%= lang['ui.player_list'] %></span>
+            <button class="panel-close">✕</button>
+          </div>
+          <div class="panel-body">
+            <input type="text" id="players-search" class="players-search" placeholder="<%= lang['ui.search'] %>">
+            <table class="players-table">
+              <thead class="players-list-table-head">
+                <tr>
+                  <th class="sortable" data-sort-key="char_name"><%= lang['ui.player'] %></th>
+                  <th class="sortable" data-sort-key="guild_name"><%= lang['ui.guild'] %></th>
+                  <th class="sortable" data-sort-key="last_online"><%= lang['ui.last_seen_online'] %></th>
+                </tr>
+              </thead>
+              <tbody class="players-list-table"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Settings panel -->
+        <div id="panel-settings" class="overlay-panel">
+          <div class="panel-header">
+            <span class="panel-title"><%= lang['ui.settings'] %></span>
+            <button class="panel-close">✕</button>
+          </div>
+          <div class="panel-body">
+            <div class="settings-group">
+              <label class="settings-label" for="inactive-days"><%= lang['ui.inactive_days'] %></label>
+              <input type="number" id="inactive-days" class="settings-input" min="0" placeholder="<%= lang['ui.inactive_days_placeholder'] %>">
+            </div>
+            <div class="settings-group">
+              <label class="settings-check-label">
+                <input type="checkbox" id="cluster-toggle">
+                <%= lang['ui.cluster_by_clan'] %>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search panel -->
+        <div id="panel-search" class="overlay-panel overlay-panel--search" style="display:flex;flex-direction:column">
+          <div class="search-input-row">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-input" placeholder="<%= lang['ui.search'] %>...">
+            <span class="search-hint">ESC</span>
+          </div>
+          <div id="search-results" class="search-results"></div>
+          <div class="search-footer"><%= lang['ui.search_fields'] %></div>
+        </div>
+
+        <!-- Status bar -->
+        <div id="status-bar"><%= lang['ui.last_update'] %><span class="lastupdate"></span></div>
+        <div id="coord-debug" style="display:none"><span id="coord-text">—</span></div>
+
+      </div>
+    </div>
+
+    <script src="assets/scripts/polyfills.js"></script>
+    <script src="https://npmcdn.com/leaflet@1.3.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/1.6.0/clipboard.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <script src="assets/scripts/colorhash.js"></script>
+    <script src="assets/scripts/map.js"></script>
+  </body>
+</html>
