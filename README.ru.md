@@ -106,6 +106,12 @@ pve_admin  = pvepass:pve
 2. Если задан `auto_refresh`, снимок автоматически обновляется из `game.db` с этим интервалом.
 3. Интерфейс читает кэшированный снимок; кнопки ручного обновления нет. Выберите сервер в панели **Серверы** (🖥), чтобы посмотреть его данные.
 
+## Источник
+
+Этот проект — форк [Evrard-ro/conan-exiles-admin-map](https://github.com/Evrard-ro/conan-exiles-admin-map),
+который, в свою очередь, является форком оригинального [germanrcuriel/conan-exiles-admin-map](https://github.com/germanrcuriel/conan-exiles-admin-map)
+авторства Germán Robledo Curiel. Распространяется по лицензии MIT — см. [LICENSE](LICENSE).
+
 ## Разработка
 
 Требования: Node.js 24+

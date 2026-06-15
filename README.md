@@ -106,6 +106,12 @@ The app does **not** read `game.db` on every page load. Instead:
 2. If `auto_refresh` is set, the snapshot is refreshed from `game.db` on that interval automatically.
 3. The UI reads the cached snapshot; there is no manual Refresh button. Select a server in the **Servers** panel (🖥) to view its data.
 
+## Credits
+
+This project is a fork of [Evrard-ro/conan-exiles-admin-map](https://github.com/Evrard-ro/conan-exiles-admin-map),
+which is itself a fork of the original [germanrcuriel/conan-exiles-admin-map](https://github.com/germanrcuriel/conan-exiles-admin-map)
+by Germán Robledo Curiel. Licensed under MIT — see [LICENSE](LICENSE).
+
 ## Development
 
 Requirements: Node.js 24+
