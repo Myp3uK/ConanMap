@@ -1,5 +1,7 @@
 # Conan Exiles Admin Map
 
+**English** | [Русский](README.ru.md)
+
 An admin dashboard for Conan Exiles servers — view players, structures and thralls on an interactive map.
 
 ## Features
@@ -40,7 +42,7 @@ An admin dashboard for Conan Exiles servers — view players, structures and thr
 
 ## Installation
 
-1. Grab the latest `.zip` from the [Releases](https://github.com/Evrard-ro/conan-exiles-admin-map/releases) page.
+1. Grab the latest `.zip` from the [Releases](https://github.com/Myp3uK/ConanMap/releases) page.
 2. Unzip anywhere convenient (does **not** need to be next to `game.db`).
 3. Edit `conan-exiles-admin-map.ini` — set database paths, port, language and optional credentials.
 4. Run `conan-exiles-admin-map.exe` — the browser opens automatically and a tray icon appears.
@@ -53,7 +55,7 @@ An admin dashboard for Conan Exiles servers — view players, structures and thr
 
 ```ini
 [SETTINGS]
-language = en       ; en or es
+language = ru       ; ru, en or es
 port     = 3001
 
 [SERVER_server1]
@@ -124,6 +126,21 @@ npm run build    # outputs build/conan-exiles-admin-map-vX.Y.Z.zip
 After building, edit `build/conan-exiles-admin-map.ini` to point `database` at your actual `game.db` before running the exe.
 
 ## Changelog
+
+#### v0.5.0 (June 15, 2026)
+
+- **Full UI redesign** — new cool-grey theme, Segoe UI typography, larger and more readable fonts, rounded surfaces and higher contrast
+- **Russian localization** — added a complete `ru` locale (interface + item names) and made it the default language
+- **Tile optimization** — regenerated tiles at native zoom 2–4 only (16×16 max) and dropped the upscaled zoom 5–6 levels, cutting tile count from ~10,600 to ~670; closer zoom is browser-upscaled. Cache-busting so updated tiles load without a manual cache clear
+- **Isle of Siptah map** — re-sliced from the source image; the letterbox background now blends with the theme instead of a hard black border
+- **Zoom-based clustering** — markers cluster when zoomed out and split into individual markers when zoomed in (viewport-virtualized), fixing redraw lag on large servers; optional "cluster at all zoom levels"
+- **Multi-select clan filter** — click clans to toggle them on/off; an empty selection shows everything
+- **Always-on side panel** — the "Structures" list (clans + guildless owners) is the default panel and stays visible; other panels replace it on demand
+- **Markers** — vivid per-clan colours with a dark outline; missing tiles no longer show the broken-image placeholder
+- **Player list** — trimmed to Name / Guild / Last online; rank and level moved into the player tooltip
+- **Tooltips** — cluster owners labelled correctly (not "Player"); unified date format `dd.MM.yyyy HH:mm`
+- **Map navigation** — free panning (removed forced re-centering); map switch buttons moved to a top-center segmented bar
+- Removed the sidebar logo and unused web-font imports; larger, more prominent sidebar icons
 
 #### v0.4.2 (June 2026)
 
