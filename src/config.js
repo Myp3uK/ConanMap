@@ -2,17 +2,21 @@ import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import ini from 'ini'
 
-const DEFAULT_COOLDOWN = 300
 const DEFAULT_PORT = 3001
 const DEFAULT_LANGUAGE = 'en'
+const DEFAULT_HOST = '127.0.0.1'
 
 export function parseConfig(rawIni) {
   const parsed = ini.parse(rawIni)
 
   const parsedPort = parseInt(parsed.SETTINGS?.port, 10)
+  const parsedAutoRefresh = parseInt(parsed.SETTINGS?.auto_refresh, 10)
   const settings = {
     language: parsed.SETTINGS?.language || DEFAULT_LANGUAGE,
-    port: Number.isFinite(parsedPort) ? parsedPort : DEFAULT_PORT
+    port: Number.isFinite(parsedPort) ? parsedPort : DEFAULT_PORT,
+    host: parsed.SETTINGS?.host || DEFAULT_HOST,
+    // seconds between automatic data refreshes; 0 (or unset) disables auto-refresh
+    autoRefresh: Number.isFinite(parsedAutoRefresh) && parsedAutoRefresh > 0 ? parsedAutoRefresh : 0
   }
 
   const servers = []
@@ -20,12 +24,10 @@ export function parseConfig(rawIni) {
     if (key.startsWith('SERVER_')) {
       const id = key.slice(7)
       const sec = parsed[key]
-      const parsedCooldown = parseInt(sec.refresh_cooldown, 10)
       servers.push({
         id,
         name: sec.name || id,
-        database: (sec.database || '').replace(/\\/g, '/'),
-        refreshCooldown: Number.isFinite(parsedCooldown) ? parsedCooldown : DEFAULT_COOLDOWN
+        database: (sec.database || '').replace(/\\/g, '/')
       })
     }
   }
@@ -35,8 +37,7 @@ export function parseConfig(rawIni) {
     servers.push({
       id: 'server1',
       name: 'Server 1',
-      database: (parsed.CONAN_EXILES.database || '').replace(/\\/g, '/'),
-      refreshCooldown: DEFAULT_COOLDOWN
+      database: (parsed.CONAN_EXILES.database || '').replace(/\\/g, '/')
     })
   }
 

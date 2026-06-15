@@ -41,18 +41,6 @@ export default function buildApiRouter() {
     res.json(list)
   })
 
-  router.post('/:serverId/refresh', serverAccessMiddleware, async (req, res) => {
-    try {
-      const snap = await snapshotService.refresh(req.params.serverId)
-      res.json({ timestamp: snap.timestamp })
-    } catch (e) {
-      if (e.code === 'COOLDOWN') return res.status(429).json({ error: e.message, retryAfter: e.retryAfter })
-      if (e.code === 'REFRESHING') return res.status(409).json({ error: e.message })
-      console.error(e)
-      res.status(500).json({ error: 'Refresh failed' })
-    }
-  })
-
   entityRoutes.forEach(({ path, key }) => {
     router.get(`/:serverId/${path}`, serverAccessMiddleware, (req, res) => {
       const snap = snapshotService.get(req.params.serverId)
@@ -60,17 +48,41 @@ export default function buildApiRouter() {
     })
   })
 
+  // Per-owner decay timers (object: ownerId -> { hours, protected })
+  router.get('/:serverId/decay', serverAccessMiddleware, (req, res) => {
+    const snap = snapshotService.get(req.params.serverId)
+    res.json({ data: snap?.data.decay ?? {}, update: snap?.timestamp ?? null })
+  })
+
   return router
 }
 
 export const apiRoutes = (app) => {
   snapshotService.load()
-  for (const server of config.servers) {
-    if (!snapshotService.get(server.id)) {
+
+  const refreshAll = () => {
+    for (const server of config.servers) {
       snapshotService.refresh(server.id).catch(e => {
-        console.error(`Auto-refresh failed for ${server.id}:`, e.message)
+        console.error(`Refresh failed for ${server.id}:`, e.message)
       })
     }
   }
+
+  if (config.settings.autoRefresh > 0) {
+    // Auto-refresh on: refresh now (fresh data right after startup) and on a timer
+    console.log(`Auto-refresh enabled: every ${config.settings.autoRefresh}s`)
+    refreshAll()
+    setInterval(refreshAll, config.settings.autoRefresh * 1000)
+  } else {
+    // Auto-refresh off: only load servers that have no cached snapshot yet
+    for (const server of config.servers) {
+      if (!snapshotService.get(server.id)) {
+        snapshotService.refresh(server.id).catch(e => {
+          console.error(`Initial refresh failed for ${server.id}:`, e.message)
+        })
+      }
+    }
+  }
+
   app.use('/api', buildApiRouter())
 }

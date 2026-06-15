@@ -55,31 +55,32 @@ An admin dashboard for Conan Exiles servers — view players, structures and thr
 
 ```ini
 [SETTINGS]
-language = ru       ; ru, en or es
-port     = 3001
+language     = ru          ; ru, en or es
+host         = 127.0.0.1   ; 127.0.0.1 = local only, 0.0.0.0 = all interfaces
+port         = 3001
+auto_refresh = 300         ; seconds between automatic data refreshes (0 = off)
 
 [SERVER_server1]
 name             = My Server
 database         = C:/ConanExiles/Saved/game.db
-refresh_cooldown = 300              ; seconds between manual refreshes
 ```
 
 #### Multiple servers with access control
 
 ```ini
 [SETTINGS]
-language = en
-port     = 3001
+language     = ru
+host         = 127.0.0.1
+port         = 3001
+auto_refresh = 300
 
 [SERVER_pve]
 name             = PvE Server
 database         = C:/Servers/pve/game.db
-refresh_cooldown = 300
 
 [SERVER_pvp]
 name             = PvP Server
 database         = C:/Servers/pvp/game.db
-refresh_cooldown = 300
 
 [USERS]
 ; Format:  username = password:server1,server2
@@ -91,17 +92,19 @@ pve_admin  = pvepass:pve
 ```
 
 **Notes:**
+- `host` defaults to `127.0.0.1` (local only). Use `0.0.0.0` to listen on all interfaces, or keep it local and publish via a reverse proxy — see [docs/caddy.md](docs/caddy.md).
+- `auto_refresh` controls how often `game.db` is read automatically (seconds; `0` disables). There is no manual Refresh button in the UI.
 - Database paths use forward slashes. Backslashes are also accepted.
-- `refresh_cooldown` defaults to 300 seconds when omitted.
+- The HTTP API is read-only — data is refreshed only on startup and on the `auto_refresh` timer; there is no write/refresh endpoint.
 - The old `[CONAN_EXILES]` section is still supported for backward compatibility (treated as a single server named `server1`).
 
 ### How data loading works
 
-The app does **not** read `game.db` on page load. Instead:
+The app does **not** read `game.db` on every page load. Instead:
 
-1. Open the **Servers** panel (🖥 in the sidebar).
-2. Click **Refresh** next to the server whose data you want to update.
-3. The snapshot is saved to a `snapshots/` folder so subsequent startups load instantly without hitting the database.
+1. On startup each server's data is read once and cached as a snapshot in a `snapshots/` folder, so restarts load instantly.
+2. If `auto_refresh` is set, the snapshot is refreshed from `game.db` on that interval automatically.
+3. The UI reads the cached snapshot; there is no manual Refresh button. Select a server in the **Servers** panel (🖥) to view its data.
 
 ## Development
 
@@ -126,6 +129,17 @@ npm run build    # outputs build/conan-exiles-admin-map-vX.Y.Z.zip
 After building, edit `build/conan-exiles-admin-map.ini` to point `database` at your actual `game.db` before running the exe.
 
 ## Changelog
+
+#### v0.6.0 (June 15, 2026)
+
+- **Bind address setting** — new `host` in `[SETTINGS]` (`127.0.0.1` by default, or `0.0.0.0`); the app no longer listens on all interfaces unless you ask it to
+- **Automatic data refresh** — `auto_refresh` (seconds) in `[SETTINGS]` reads `game.db` on a timer and immediately on startup; the manual Refresh button was removed and the UI now polls for fresh data
+- **Read-only API** — removed the `POST /api/<id>/refresh` write endpoint and the per-server `refresh_cooldown`; data can no longer be changed from the outside
+- **Decay timer** — the structures list shows each owner's most-urgent building decay (from `DecayTimestamp`/`serverruntime`), colour-coded, with a "by decay" sort
+- **Bidirectional sorting** — count / name sorts in the structures list toggle direction on re-click (↑/↓)
+- **Menu redesign** — reordered to Structures · Players · Filters · Search · Servers, with simple vector (SVG) icons that follow the accent/text colour; removed the logo
+- **Custom program icon** — new tray icon and browser favicon
+- Simplified the Caddy guide (read-only API + localhost bind ⇒ nothing to block); authentication is now disabled by default in the config template
 
 #### v0.5.0 (June 15, 2026)
 

@@ -14,9 +14,10 @@ middleware(app)
 routes(app)
 
 const port = app.get('port')
+const host = app.get('host')
 
-app.listen(port, () => {
-  console.log(`App listening on port ${port}`)
+app.listen(port, host, () => {
+  console.log(`App listening on http://${host}:${port}`)
   const url = `http://localhost:${port}/`
   openBrowser(url)
   startTray(url)

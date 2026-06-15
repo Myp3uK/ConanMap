@@ -74,29 +74,3 @@ describe('GET /api/:serverId/altars', () => {
     expect(res.status).toBe(404)
   })
 })
-
-describe('POST /api/:serverId/refresh', () => {
-  test('returns 200 with timestamp on success', async () => {
-    snapshotService.refresh.mockResolvedValue({ timestamp: '2026-01-01T00:00:00.000Z' })
-    const res = await request(makeApp()).post('/api/s1/refresh')
-    expect(res.status).toBe(200)
-    expect(res.body.timestamp).toBe('2026-01-01T00:00:00.000Z')
-  })
-
-  test('returns 429 with retryAfter when cooldown is active', async () => {
-    snapshotService.refresh.mockRejectedValue(
-      Object.assign(new Error('Cooldown'), { code: 'COOLDOWN', retryAfter: 240 })
-    )
-    const res = await request(makeApp()).post('/api/s1/refresh')
-    expect(res.status).toBe(429)
-    expect(res.body.retryAfter).toBe(240)
-  })
-
-  test('returns 409 when refresh is already in progress', async () => {
-    snapshotService.refresh.mockRejectedValue(
-      Object.assign(new Error('Refreshing'), { code: 'REFRESHING' })
-    )
-    const res = await request(makeApp()).post('/api/s1/refresh')
-    expect(res.status).toBe(409)
-  })
-})

@@ -23,11 +23,9 @@ database = /path/game2.db
     expect(cfg.servers[0]).toEqual({
       id: 'server1',
       name: 'Exile Lands',
-      database: '/path/game1.db',
-      refreshCooldown: 300
+      database: '/path/game1.db'
     })
     expect(cfg.servers[1].id).toBe('server2')
-    expect(cfg.servers[1].refreshCooldown).toBe(300) // default applied
   })
 
   test('backward compat: [CONAN_EXILES] becomes server1', () => {

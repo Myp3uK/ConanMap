@@ -59,5 +59,6 @@ export default {
   "sort_by_count": "По количеству",
   "sort_by_name": "По имени",
   "sort_by_activity": "По активности",
+  "sort_by_decay": "По ветшанию",
   "search_fields": "Поиск: имя, клан, фракция, тип"
 }

@@ -36,24 +36,6 @@ describe('snapshotService', () => {
     await expect(service.refresh('s1')).rejects.toMatchObject({ code: 'REFRESHING' })
   })
 
-  test('refresh() rejects when cooldown has not elapsed', async () => {
-    const mockDb = {
-      prepare: jest.fn().mockReturnValue({ all: jest.fn().mockReturnValue([]) }),
-      close: jest.fn()
-    }
-    Database.mockImplementation(() => mockDb)
-    mkdirSync.mockImplementation(() => {})
-    writeFileSync.mockImplementation(() => {})
-
-    await service.refresh('s1')
-
-    // Immediate second refresh should hit cooldown (cooldown = 5s, 0s elapsed)
-    await expect(service.refresh('s1')).rejects.toMatchObject({
-      code: 'COOLDOWN',
-      retryAfter: expect.any(Number)
-    })
-  })
-
   test('load() does nothing when snapshots directory does not exist', () => {
     existsSync.mockReturnValue(false)
     service.load()

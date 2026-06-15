@@ -38,10 +38,13 @@ var boundsY = [ -47.7, -245.3 ]
 var activeKinds = {}
 var clanFilter = []   // selected clan ids; empty = show all clans
 var clanSortMode = 'count'
+var clanSortDir = 'desc'        // 'asc' | 'desc' — sort direction for the structures list
+var decayByOwner = {}           // ownerId -> { hours, protected }
 var inactiveDays = 0
 var clusterEnabled = false
 var clusterGroups = {}
 var activeServerId = null
+var lastActiveTimestamp = null   // last snapshot time drawn for the active server
 var allMarkersData = []
 var markerByCoords = {}
 var playerLastOnline = {}
@@ -122,6 +125,22 @@ function loadServers () {
   })
 }
 
+// Periodically refresh the server list ("last updated" times) and, if the
+// active server's snapshot changed (auto_refresh on the backend), redraw data.
+function pollServers () {
+  $.getJSON('api/servers', function (servers) {
+    renderServersList(servers)
+    if (!activeServerId) return
+    var active = null
+    servers.forEach(function (s) { if (s.id === activeServerId) active = s })
+    if (active && active.timestamp && active.timestamp !== lastActiveTimestamp) {
+      getPlayers()
+      getDecay()
+      drawData()
+    }
+  })
+}
+
 function renderServersList (servers) {
   var html = ''
   servers.forEach(function (s) {
@@ -134,9 +153,6 @@ function renderServersList (servers) {
     html += '<span class="server-name">' + escapeHtml(s.name) + '</span>'
     html += '<span class="server-ago">' + ago + '</span>'
     html += '</div>'
-    var refreshing = s.refreshing ? ' disabled' : ''
-    var refreshLabel = s.refreshing ? '…' : '↺'
-    html += '<button class="server-refresh-btn" onclick="event.stopPropagation();refreshServer(' + sid + ')"' + refreshing + '>' + refreshLabel + '</button>'
     html += '</div>'
   })
   $('#servers-list').html(html)
@@ -155,34 +171,9 @@ function timeSince (date) {
 function selectServer (serverId) {
   activeServerId = serverId
   getPlayers()
+  getDecay()
   showAll()
   openPanel(DEFAULT_PANEL)   // show the default panel right after data loads
-}
-
-function refreshServer (serverId) {
-  $.ajax({
-    url: 'api/' + serverId + '/refresh',
-    method: 'POST',
-    success: function (data) {
-      toastr.success('Данные сервера обновлены')
-      if (serverId === activeServerId) {
-        getPlayers()
-        showAll()
-      }
-      $.getJSON('api/servers', function (servers) { renderServersList(servers) })
-    },
-    error: function (xhr) {
-      var body = xhr.responseJSON || {}
-      if (xhr.status === 429) {
-        var mins = Math.ceil((body.retryAfter || 0) / 60)
-        toastr.warning('Следующее обновление через ' + mins + ' мин.')
-      } else if (xhr.status === 409) {
-        toastr.info('Обновление уже выполняется.')
-      } else {
-        toastr.error('Ошибка обновления.')
-      }
-    }
-  })
 }
 
 function init() {
@@ -268,9 +259,13 @@ function init() {
   })
 
   $(document).on('click', '.clan-sort-btn', function () {
-    clanSortMode = $(this).data('sort')
-    $('.clan-sort-btn').removeClass('active')
-    $(this).addClass('active')
+    var mode = $(this).data('sort')
+    if (clanSortMode === mode) {
+      clanSortDir = clanSortDir === 'asc' ? 'desc' : 'asc'   // re-click toggles direction
+    } else {
+      clanSortMode = mode
+      clanSortDir = mode === 'count' ? 'desc' : 'asc'        // count: most first; name/decay: asc
+    }
     rebuildClanFilterMenu()
   })
 
@@ -323,6 +318,7 @@ function init() {
   }, true)
 
   loadServers()
+  setInterval(pollServers, 60000)   // keep "last updated" and data fresh in the UI
 }
 
 function switchMap(name) {
@@ -540,6 +536,7 @@ function drawData () {
       remaining--
       if (remaining === 0) {
         if (lastUpdate) $('.lastupdate').html(lastUpdate)
+        lastActiveTimestamp = lastUpdate
         renderMarkers(allMarkers)
         updateFilterCounts()
       }
@@ -815,6 +812,47 @@ function getActivityInfo (lastSeen) {
   return { cls: 'grey', label: daysAgo + ' дн. назад' }
 }
 
+function getDecay () {
+  if (!activeServerId) return
+  $.getJSON('api/' + activeServerId + '/decay', function (d) {
+    decayByOwner = d.data || {}
+    rebuildClanFilterMenu()
+  })
+}
+
+// Decay (ветшание) label + colour for an owner; mirrors the per-owner min hours_left.
+function getDecayInfo (ownerId) {
+  var d = decayByOwner[ownerId]
+  if (!d) return { cls: 'grey', label: '—' }
+  if (d.protected || d.hours === null) return { cls: 'green', label: 'Защищено' }
+  var h = d.hours
+  if (h <= 0) return { cls: 'red', label: 'Просрочено' }
+  var label = h < 48 ? Math.round(h) + ' ч' : Math.round(h / 24) + ' дн'
+  var cls = h < 24 ? 'red' : (h < 72 ? 'yellow' : 'green')
+  return { cls: cls, label: 'ветшание: ' + label }
+}
+
+// Numeric decay key for sorting; protected/unknown sort last (Infinity).
+function decayHours (ownerId) {
+  var d = decayByOwner[ownerId]
+  if (!d || d.protected || d.hours === null) return Infinity
+  return d.hours
+}
+
+function updateSortButtons () {
+  var labels = {
+    count: language.phrases['ui.sort_by_count'] || 'By count',
+    name:  language.phrases['ui.sort_by_name']  || 'By name',
+    decay: language.phrases['ui.sort_by_decay'] || 'By decay'
+  }
+  var arrow = clanSortDir === 'asc' ? ' ↑' : ' ↓'
+  $('.clan-sort-btn').each(function () {
+    var m = $(this).data('sort')
+    var active = clanSortMode === m
+    $(this).toggleClass('active', active).text(labels[m] + (active ? arrow : ''))
+  })
+}
+
 function rebuildClanFilterMenu () {
   var currentGroups = clusterGroups
   var groups = Object.keys(currentGroups)
@@ -836,14 +874,16 @@ function rebuildClanFilterMenu () {
     }
   })
 
-  // Sort
+  // Sort (bidirectional via clanSortDir)
+  var dir = clanSortDir === 'asc' ? 1 : -1
   if (clanSortMode === 'name') {
-    groupData.sort(function (a, b) { return a.name.localeCompare(b.name) })
-  } else if (clanSortMode === 'activity') {
-    groupData.sort(function (a, b) { return (b.lastSeen || 0) - (a.lastSeen || 0) })
+    groupData.sort(function (a, b) { return a.name.localeCompare(b.name) * dir })
+  } else if (clanSortMode === 'decay') {
+    groupData.sort(function (a, b) { return (decayHours(a.id) - decayHours(b.id)) * dir })
   } else {
-    groupData.sort(function (a, b) { return b.count - a.count })
+    groupData.sort(function (a, b) { return (a.count - b.count) * dir })
   }
+  updateSortButtons()
 
   // Drop any selected clans that no longer exist
   clanFilter = clanFilter.filter(function (id) { return currentGroups[id] })
@@ -864,7 +904,7 @@ function rebuildClanFilterMenu () {
   // Clan rows
   groupData.forEach(function (g) {
     if (q && g.name.toLowerCase().indexOf(q) === -1) return
-    var act = getActivityInfo(g.lastSeen)
+    var act = getDecayInfo(g.id)
     var isActive = clanFilter.indexOf(g.id) !== -1
     var item = $('<div>')
       .addClass('clan-item-expanded' + (isActive ? ' active' : ''))
