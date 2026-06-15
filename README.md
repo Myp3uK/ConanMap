@@ -4,6 +4,10 @@
 
 An admin dashboard for Conan Exiles servers — view players, structures and thralls on an interactive map.
 
+<p align="center">
+  <img src="docs/screenshot.webp" alt="Conan Exiles Admin Map — interactive map with clustered markers" width="800">
+</p>
+
 ## Features
 
 - Interactive map with support for both **Exiled Lands** and **Isle of Siptah**
