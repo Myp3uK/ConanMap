@@ -7,6 +7,28 @@ import SysTray from 'systray2'
 
 import middleware from './middleware'
 import routes from './routes'
+import config from './config'
+import { isHash } from './services/auth'
+
+// ── Mandatory admin auth: [AUTH] must define at least one valid scrypt hash ───
+function validateAdmins () {
+  const admins = config.admins
+  if (!admins || admins.size === 0) {
+    console.error('\n[CONFIG ERROR] The [AUTH] section is required and must define at least one admin.')
+    console.error('Generate a password hash with:  npm run set-password <password>')
+    console.error('then add it to conan-exiles-admin-map.ini, e.g.:\n\n[AUTH]\nadmin = scrypt$...\n')
+    process.exit(1)
+  }
+  for (const [username, hash] of admins) {
+    if (!isHash(hash)) {
+      console.error(`\n[CONFIG ERROR] [AUTH] entry "${username}" is not a valid scrypt hash.`)
+      console.error('Generate one with:  npm run set-password <password>\n')
+      process.exit(1)
+    }
+  }
+}
+
+validateAdmins()
 
 const app = express()
 

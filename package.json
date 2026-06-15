@@ -1,10 +1,11 @@
 {
   "name": "conan-exiles-admin-map",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A Conan Exiles Admin Dashboard",
   "main": "src/conan-exiles-admin-map.js",
   "scripts": {
     "start": "babel-node src/conan-exiles-admin-map.js",
+    "set-password": "babel-node tools/set-password.js",
     "build": "bash bin/build.sh",
     "test": "jest --no-coverage"
   },
