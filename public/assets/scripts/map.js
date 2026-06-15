@@ -39,7 +39,16 @@ var activeKinds = {}
 var clanFilter = []   // selected clan ids; empty = show all clans
 var clanSortMode = 'count'
 var clanSortDir = 'desc'        // 'asc' | 'desc' — sort direction for the structures list
-var decayByOwner = {}           // ownerId -> { hours, protected }
+var decayByOwner = {}           // ownerId -> { hours, protected } (backend, for protected flag)
+var decayByObject = {}          // building object_id -> hoursLeft (non-protected only)
+var decayByGroup = {}           // owner group id -> min hoursLeft across that owner's RENDERED markers
+var isAdmin = false             // logged-in admin (enables admin-only actions)
+var viewMode = 'houses'         // 'houses' (game data) | 'markers' (custom markers)
+var customMarkers = []          // custom markers for the active server
+var customLayer = null          // Leaflet layer group for custom markers
+var iconList = []               // available marker-icon webp filenames
+var ctxPoint = null             // last right-clicked map point { x, y }
+var selectedIcon = null         // chosen icon in the add-marker modal
 var inactiveDays = 0
 var clusterEnabled = false
 var clusterGroups = {}
@@ -49,6 +58,7 @@ var allMarkersData = []
 var markerByCoords = {}
 var playerLastOnline = {}
 var guildLastOnline = {}
+var guildRosters = {}           // guild_id -> [{ name, level, online, lastSeen }]
 var circleMarkerOptions = {
   color: MARKER_STROKE,
   weight: 1.5,
@@ -62,8 +72,9 @@ var tooltipOptions = {
 }
 
 var colorhash = new ColorHash({
-  lightness: [ 0.55, 0.65, 0.72 ],
-  saturation: [ 0.85, 0.95, 1 ]
+  // Muted palette so the red/yellow decay-warning outline stands out clearly.
+  lightness: [ 0.45, 0.52, 0.6 ],
+  saturation: [ 0.35, 0.45, 0.55 ]
 })
 
 function escapeHtml(str) {
@@ -136,8 +147,9 @@ function pollServers () {
     if (active && active.timestamp && active.timestamp !== lastActiveTimestamp) {
       getPlayers()
       getDecay()
-      drawData()
+      renderActiveView()
     }
+    getCustomMarkers()   // live pickup of markers added by other admins
   })
 }
 
@@ -172,6 +184,12 @@ function selectServer (serverId) {
   activeServerId = serverId
   getPlayers()
   getDecay()
+  getCustomMarkers()
+  if (viewMode === 'markers') {
+    renderCustomMarkers()
+    openPanel('markers')
+    return
+  }
   showAll()
   openPanel(DEFAULT_PANEL)   // show the default panel right after data loads
 }
@@ -205,9 +223,18 @@ function init() {
     updateWhenZooming: false
   }).addTo(map)
 
-  // Sidebar panel toggles
+  // Sidebar panel toggles. Structures/players/filters/search are the "houses"
+  // view; "markers" switches the map to custom markers.
+  var housePanels = ['clans', 'players', 'filters', 'search']
   $('.sb-btn[data-panel]').on('click', function () {
     var name = $(this).data('panel')
+    if (name === 'markers') {
+      setViewMode('markers')
+      getCustomMarkers()
+      openPanel('markers')
+      return
+    }
+    if (housePanels.indexOf(name) !== -1) setViewMode('houses')
     if (name === 'players') {
       showPlayerList()
     } else if (name === 'search') {
@@ -220,6 +247,40 @@ function init() {
 
   $(document).on('click', '.panel-close', function () {
     closePanel()
+  })
+
+  // ── Admin login ──
+  checkAuth()
+  $('#login-btn').on('click', function () {
+    if (isAdmin) {
+      doLogout()
+    } else {
+      $('#login-error').text('')
+      $('#login-modal').css('display', 'flex')
+      setTimeout(function () { $('#login-user').focus() }, 50)
+    }
+  })
+  $('#login-cancel, #login-close').on('click', closeLoginModal)
+  $('#login-submit').on('click', doLogin)
+  $('#login-pass').on('keydown', function (e) { if (e.key === 'Enter') doLogin() })
+  // Modals close only via Esc or the ✕/Cancel buttons (never on outside click).
+  $(document).on('keydown', function (e) { if (e.key === 'Escape') closeAllModals() })
+
+  // ── Add-marker modal + markers panel ──
+  $('#marker-cancel, #marker-close').on('click', closeMarkerModal)
+  $('#marker-save').on('click', saveMarker)
+  $(document).on('click', '#marker-icons .icon-opt', function () {
+    selectedIcon = $(this).data('icon')
+    $('#marker-icons .icon-opt').removeClass('selected')
+    $(this).addClass('selected')
+  })
+  $(document).on('click', '.marker-item', function (e) {
+    if ($(e.target).closest('.marker-del').length) return
+    navigateToResult($(this).data('x'), $(this).data('y'))
+  })
+  $(document).on('click', '.marker-del', function (e) {
+    e.stopPropagation()
+    deleteMarker($(this).data('id'))
   })
 
   map.on('click', function () {
@@ -303,6 +364,21 @@ function init() {
     }
   })
 
+  // Right-click on empty map → context menu for that point.
+  map.on('contextmenu', function (e) {
+    if (e.originalEvent) e.originalEvent.preventDefault()
+    var c = fromLatLng(e.latlng.lat, e.latlng.lng)
+    showContextMenu(e.originalEvent.clientX, e.originalEvent.clientY,
+      'TeleportPlayer ' + c.x + ' ' + c.y, { x: c.x, y: c.y })
+  })
+
+  // Dismiss the context menu on any outside interaction.
+  map.on('movestart click', hideContextMenu)
+  $(document).on('mousedown', function (e) {
+    if (!$(e.target).closest('#map-ctx-menu').length) hideContextMenu()
+  })
+  $(document).on('keydown', function (e) { if (e.key === 'Escape') hideContextMenu() })
+
   window.addEventListener('keydown', function (e) {
     if (e.ctrlKey && (e.code === 'KeyF' || e.key === 'f' || e.key === 'F')) {
       e.preventDefault()
@@ -340,7 +416,7 @@ function switchMap(name) {
   }).addTo(map)
 
   map.setView(mapBounds.getCenter(), 2)
-  drawData()
+  renderActiveView()
 
   $('.map-btn').removeClass('active')
   $('.map-btn').filter(function () { return $(this).data('map') === name }).addClass('active')
@@ -404,14 +480,16 @@ function getTooltipContent (marker) {
     header = translatedKind
     if (marker.guild_name) rows += tipRow(ph['ui.guild'] || 'Guild', marker.guild_name)
     else rows += tipRow(ph['ui.player'] || 'Player', marker.char_name)
+    var dh = markerDecayHours(marker)
+    if (dh !== null) {
+      rows += tipRow(ph['ui.decay'] || 'Decay', decayShortLabel(dh))
+    }
   }
 
   var tip = '<div class="tip-header">' + escapeHtml(header)
   if (badge) tip += ' ' + badge
   tip += '</div>'
   tip += rows
-  tip += '<div class="tip-sep"></div>'
-  tip += '<div class="tip-tele">🖱 ' + (ph['ui.teleport_hint'] || 'click to copy teleport') + '</div>'
   return tip
 }
 
@@ -428,6 +506,11 @@ function clearAllLayers () {
     if (map.hasLayer(clusterGroups[k])) map.removeLayer(clusterGroups[k])
   })
   clusterGroups = {}
+
+  if (customLayer) {
+    if (map.hasLayer(customLayer)) map.removeLayer(customLayer)
+    customLayer.clearLayers()
+  }
 
   groupNames = {}
   groupColors = {}
@@ -475,6 +558,14 @@ function renderMarkers (markers) {
       marker.stroke = 'white'
     }
 
+    // Highlight buildings that are about to decay (colored, thicker outline).
+    var warn = decayWarnStyle(markerDecayHours(marker))
+    if (warn) {
+      marker.stroke = warn.color
+      marker._decayWeight = warn.weight
+      marker._decayWarn = warn.level
+    }
+
     marker.tooltip = getTooltipContent(marker)
 
     if (!clusterGroups[group]) {
@@ -507,6 +598,7 @@ function renderMarkers (markers) {
     clusterGroups[k].addTo(map)
   })
 
+  computeGroupDecay()
   applyClanFilter()
   rebuildClanFilterMenu()
 }
@@ -618,27 +710,263 @@ function resetFilters () {
   drawData()
 }
 
-function onClick (point) {
+// ── Admin auth (cookie session) ──────────────────────────────────────────────
+function updateAdminUI () {
+  $('body').toggleClass('is-admin', isAdmin)
+  $('#login-btn').attr('title',
+    isAdmin ? (language.phrases['ui.logout'] || 'Log out') : (language.phrases['ui.login'] || 'Log in'))
+  $('#login-btn .login-icon-out').toggle(!isAdmin)
+  $('#login-btn .login-icon-in').toggle(isAdmin)
+}
+
+function checkAuth () {
+  $.getJSON('api/me', function (d) {
+    isAdmin = !!(d && d.admin)
+    updateAdminUI()
+  })
+}
+
+function closeLoginModal () {
+  $('#login-modal').css('display', 'none')
+  $('#login-user').val('')
+  $('#login-pass').val('')
+  $('#login-error').text('')
+}
+
+// Close every open modal (Esc handler). Modals never close on outside click.
+function closeAllModals () {
+  closeLoginModal()
+  if (typeof closeMarkerModal === 'function') closeMarkerModal()
+}
+
+function doLogin () {
+  var username = $('#login-user').val()
+  var password = $('#login-pass').val()
+  $.ajax({
+    url: 'api/login', method: 'POST', contentType: 'application/json',
+    data: JSON.stringify({ username: username, password: password })
+  }).done(function (d) {
+    isAdmin = !!(d && d.admin)
+    updateAdminUI()
+    renderMarkersPanel()
+    closeLoginModal()
+    toastr.success(language.phrases['ui.logged_in'] || 'Logged in')
+  }).fail(function () {
+    $('#login-error').text(language.phrases['ui.login_failed'] || 'Invalid username or password')
+  })
+}
+
+function doLogout () {
+  $.ajax({ url: 'api/logout', method: 'POST' }).always(function () {
+    isAdmin = false
+    updateAdminUI()
+    renderMarkersPanel()
+    toastr.info(language.phrases['ui.logged_out'] || 'Logged out')
+  })
+}
+
+// ── View mode: houses (game data) vs custom markers ──────────────────────────
+function setViewMode (mode) {
+  if (mode === viewMode) return
+  viewMode = mode
+  renderActiveView()
+}
+
+function renderActiveView () {
+  if (viewMode === 'markers') renderCustomMarkers()
+  else drawData()
+}
+
+// ── Custom markers ───────────────────────────────────────────────────────────
+function getCustomMarkers () {
+  if (!activeServerId) return
+  $.getJSON('api/' + activeServerId + '/custom-markers', function (d) {
+    customMarkers = (d && d.data) || []
+    if (viewMode === 'markers') renderCustomMarkers()
+    renderMarkersPanel()
+  })
+}
+
+function customIcon (icon) {
+  return L.icon({
+    iconUrl: 'assets/markers/' + encodeURIComponent(icon),
+    iconSize: [32, 32], iconAnchor: [16, 16], tooltipAnchor: [0, -14]
+  })
+}
+
+function renderCustomMarkers () {
+  clearAllLayers()
+  if (!customLayer) customLayer = L.layerGroup()
+  customLayer.clearLayers()
+  customMarkers.forEach(function (m) {
+    if (m.map !== activeMap) return
+    var mk = L.marker(toLatLng(m.x, m.y), { icon: customIcon(m.icon) })
+    if (m.label) mk.bindTooltip(escapeHtml(m.label), { direction: 'top' })
+    mk.on('contextmenu', function (e) {
+      L.DomEvent.stopPropagation(e)
+      if (e.originalEvent) e.originalEvent.preventDefault()
+      showContextMenu(e.originalEvent.clientX, e.originalEvent.clientY,
+        'TeleportPlayer ' + m.x + ' ' + m.y, { x: m.x, y: m.y })
+    })
+    customLayer.addLayer(mk)
+  })
+  customLayer.addTo(map)
+  renderMarkersPanel()
+}
+
+function renderMarkersPanel () {
+  var ph = language.phrases
+  $('#markers-hint').text(isAdmin ? (ph['ui.markers_hint_admin'] || '') : (ph['ui.markers_hint_view'] || ''))
+  var list = customMarkers.filter(function (m) { return m.map === activeMap })
+  if (!list.length) {
+    $('#markers-list').html('<div class="search-empty">' + escapeHtml(ph['ui.no_markers'] || 'No markers') + '</div>')
+    return
+  }
+  var html = ''
+  list.forEach(function (m) {
+    html += '<div class="marker-item" data-x="' + m.x + '" data-y="' + m.y + '">'
+    html += '<img class="marker-item-icon" src="assets/markers/' + encodeURIComponent(m.icon) + '">'
+    html += '<span class="marker-item-label">' + escapeHtml(m.label || '—') + '</span>'
+    if (isAdmin) html += '<button class="marker-del" data-id="' + escapeHtml(m.id) + '" title="' + escapeHtml(ph['ui.delete'] || 'Delete') + '">✕</button>'
+    html += '</div>'
+  })
+  $('#markers-list').html(html)
+}
+
+function deleteMarker (id) {
+  $.ajax({ url: 'api/' + activeServerId + '/custom-markers/' + encodeURIComponent(id), method: 'DELETE' })
+    .done(function () {
+      toastr.info(language.phrases['ui.marker_deleted'] || 'Deleted')
+      getCustomMarkers()
+    })
+    .fail(function () { toastr.error('Error') })
+}
+
+// ── Add-marker modal (admin) ─────────────────────────────────────────────────
+function openAddMarker () {
+  if (!isAdmin || !ctxPoint) return
+  selectedIcon = null
+  $('#marker-label').val('')
+  loadIconPicker()
+  $('#marker-modal').css('display', 'flex')
+  setTimeout(function () { $('#marker-label').focus() }, 50)
+}
+
+function closeMarkerModal () {
+  $('#marker-modal').css('display', 'none')
+}
+
+function loadIconPicker () {
+  var render = function () {
+    var html = ''
+    iconList.forEach(function (ic) {
+      html += '<button class="icon-opt" data-icon="' + escapeHtml(ic) + '"><img src="assets/markers/' + encodeURIComponent(ic) + '"></button>'
+    })
+    $('#marker-icons').html(html)
+  }
+  if (iconList.length) render()
+  else $.getJSON('api/marker-icons', function (d) { iconList = (d && d.icons) || []; render() })
+}
+
+function saveMarker () {
+  if (!ctxPoint) return
+  if (!selectedIcon) { toastr.warning(language.phrases['ui.pick_icon'] || 'Pick an icon'); return }
+  $.ajax({
+    url: 'api/' + activeServerId + '/custom-markers', method: 'POST', contentType: 'application/json',
+    data: JSON.stringify({ map: activeMap, x: ctxPoint.x, y: ctxPoint.y, icon: selectedIcon, label: $('#marker-label').val() })
+  }).done(function () {
+    closeMarkerModal()
+    toastr.success(language.phrases['ui.marker_added'] || 'Marker added')
+    setViewMode('markers')
+    getCustomMarkers()
+    openPanel('markers')
+  }).fail(function () { toastr.error('Error') })
+}
+
+function copyText (str) {
   var input = document.createElement('textarea')
   document.body.appendChild(input)
-  input.value = point.target.options.teleport
+  input.value = str
   input.select()
   document.execCommand('copy')
   input.remove()
+}
+
+function onClick (point) {
+  copyText(point.target.options.teleport)
   toastr.success(language.phrases['ui.teleport_copied'])
+}
+
+function onMarkerContext (e) {
+  L.DomEvent.stopPropagation(e)
+  if (e.originalEvent) e.originalEvent.preventDefault()
+  var o = e.target.options
+  showContextMenu(e.originalEvent.clientX, e.originalEvent.clientY, o.coordsCmd,
+    (o.gameX != null ? { x: o.gameX, y: o.gameY } : null))
+}
+
+// ── Right-click context menu (Add marker [disabled] · Copy coordinates) ───────
+function ctxMenuEl () {
+  var el = document.getElementById('map-ctx-menu')
+  if (!el) {
+    el = document.createElement('div')
+    el.id = 'map-ctx-menu'
+    el.className = 'ctx-menu'
+    document.body.appendChild(el)
+  }
+  return el
+}
+
+function hideContextMenu () {
+  var el = document.getElementById('map-ctx-menu')
+  if (el) el.style.display = 'none'
+}
+
+// teleportCmd: "TeleportPlayer x y z" for the clicked point or marker.
+// point: { x, y } game coords used by "Add marker" (admin only).
+function showContextMenu (clientX, clientY, teleportCmd, point) {
+  var ph = language.phrases
+  ctxPoint = point || null
+  var el = ctxMenuEl()
+  var addCls = isAdmin ? 'ctx-item' : 'ctx-item ctx-disabled'
+  el.innerHTML =
+    '<div class="' + addCls + '" data-act="add">' + escapeHtml(ph['ui.add_marker'] || 'Add marker') + '</div>' +
+    '<div class="ctx-item" data-act="copy">' + escapeHtml(ph['ui.copy_coords'] || 'Copy coordinates') + '</div>'
+  if (isAdmin) {
+    el.querySelector('[data-act="add"]').onclick = function () {
+      hideContextMenu()
+      openAddMarker()
+    }
+  }
+  el.querySelector('[data-act="copy"]').onclick = function () {
+    copyText(teleportCmd)
+    toastr.success(ph['ui.coords_copied'] || ph['ui.teleport_copied'])
+    hideContextMenu()
+  }
+  el.style.display = 'block'
+  var w = el.offsetWidth, h = el.offsetHeight
+  var left = clientX, top = clientY
+  if (left + w > window.innerWidth - 8) left = window.innerWidth - w - 8
+  if (top + h > window.innerHeight - 8) top = window.innerHeight - h - 8
+  el.style.left = left + 'px'
+  el.style.top = top + 'px'
 }
 
 function createMarker(marker, group) {
   var opt = Object.assign({}, circleMarkerOptions)
   opt.fillColor = marker.color || opt.fillColor
   opt.color = marker.stroke || opt.color
+  if (marker._decayWeight) opt.weight = marker._decayWeight
   opt.teleport = 'TeleportPlayer ' + marker.x + ' ' + marker.y + ' ' + marker.z
+  opt.coordsCmd = 'TeleportPlayer ' + marker.x + ' ' + marker.y
+  opt.gameX = marker.x; opt.gameY = marker.y
 
   if (group && !markerLayers[group]) markerLayers[group] = L.layerGroup()
 
   var point = L.circleMarker(toLatLng(marker.x, marker.y), opt)
     .bindTooltip(marker.tooltip, tooltipOptions)
     .on('click', onClick)
+    .on('contextmenu', onMarkerContext)
 
   markerByCoords[marker.x + ',' + marker.y] = point
 
@@ -718,9 +1046,15 @@ function renderPlayerTable () {
     }
   })
 
+  var ph = language.phrases
   var html = ''
   filtered.forEach(function (player) {
-    html += '<tr class="player-list-item' + (player.online == 1 ? ' player-online-row' : '') + '">'
+    // Rank + level shown via the native title tooltip (never clipped by the panel/overlay).
+    var tipParts = []
+    if (player.rank) tipParts.push((ph['ui.rank'] || 'Rank') + ': ' + player.rank)
+    if (player.level) tipParts.push((ph['ui.level'] || 'Level') + ': ' + player.level)
+    var titleAttr = tipParts.length ? ' title="' + escapeHtml(tipParts.join(' · ')) + '"' : ''
+    html += '<tr class="player-list-item' + (player.online == 1 ? ' player-online-row' : '') + '"' + titleAttr + '>'
     html += '<td>' + escapeHtml(player.char_name) + '</td>'
     html += '<td>' + escapeHtml(player.guild_name) + '</td>'
     html += '<td>' + escapeHtml(fmtDateTime(parseDbTs(player.last_online))) + '</td>'
@@ -753,7 +1087,11 @@ function createMarkerInCluster (marker, clusterGroup) {
   var opt = Object.assign({}, circleMarkerOptions)
   opt.fillColor = marker.color || opt.fillColor
   opt.color = marker.stroke || opt.color
+  if (marker._decayWeight) opt.weight = marker._decayWeight
+  opt.decayWarn = marker._decayWarn || null
   opt.teleport = 'TeleportPlayer ' + marker.x + ' ' + marker.y + ' ' + marker.z
+  opt.coordsCmd = 'TeleportPlayer ' + marker.x + ' ' + marker.y
+  opt.gameX = marker.x; opt.gameY = marker.y
   opt.markerGuildId = marker.guild_id || null
   opt.markerGuildName = marker.guild_name || ''
   opt.markerCharId = marker.char_id || null
@@ -762,6 +1100,7 @@ function createMarkerInCluster (marker, clusterGroup) {
   var point = L.circleMarker(toLatLng(marker.x, marker.y), opt)
     .bindTooltip(marker.tooltip, tooltipOptions)
     .on('click', onClick)
+    .on('contextmenu', onMarkerContext)
     .addTo(clusterGroup)
 
   markerByCoords[marker.x + ',' + marker.y] = point
@@ -770,8 +1109,18 @@ function createMarkerInCluster (marker, clusterGroup) {
 function makeClusterIcon (color) {
   return function (cluster) {
     var size = 40
+    // Propagate the worst decay warning of any child marker to the cluster bubble,
+    // so decaying blocks are visible without zooming in.
+    var warn = null
+    var kids = cluster.getAllChildMarkers()
+    for (var i = 0; i < kids.length; i++) {
+      var w = kids[i].options.decayWarn
+      if (w === 'red') { warn = 'red'; break }
+      if (w === 'yellow') warn = 'yellow'
+    }
+    var warnCls = warn ? ' cluster-warn-' + warn : ''
     return L.divIcon({
-      html: '<div class="cluster-icon" style="background-color:' + escapeHtml(color) + ';width:' + size + 'px;height:' + size + 'px;">' + cluster.getChildCount() + '</div>',
+      html: '<div class="cluster-icon' + warnCls + '" style="background-color:' + escapeHtml(color) + ';width:' + size + 'px;height:' + size + 'px;">' + cluster.getChildCount() + '</div>',
       className: '',
       iconSize: L.point(size, size)
     })
@@ -816,27 +1165,68 @@ function getDecay () {
   if (!activeServerId) return
   $.getJSON('api/' + activeServerId + '/decay', function (d) {
     decayByOwner = d.data || {}
+    decayByObject = d.byObject || {}
+    computeGroupDecay()
     rebuildClanFilterMenu()
   })
 }
 
-// Decay (ветшание) label + colour for an owner; mirrors the per-owner min hours_left.
-function getDecayInfo (ownerId) {
-  var d = decayByOwner[ownerId]
-  if (!d) return { cls: 'grey', label: '—' }
-  if (d.protected || d.hours === null) return { cls: 'green', label: 'Защищено' }
-  var h = d.hours
-  if (h <= 0) return { cls: 'red', label: 'Просрочено' }
-  var label = h < 48 ? Math.round(h) + ' ч' : Math.round(h / 24) + ' дн'
-  var cls = h < 24 ? 'red' : (h < 72 ? 'yellow' : 'green')
-  return { cls: cls, label: 'ветшание: ' + label }
+// Per-marker decay hours for a building (null if unknown/protected).
+function markerDecayHours (marker) {
+  if (!marker || marker.object_id == null) return null
+  var h = decayByObject[marker.object_id]
+  return (h === undefined) ? null : h
 }
 
-// Numeric decay key for sorting; protected/unknown sort last (Infinity).
-function decayHours (ownerId) {
+// Warning stroke for a low-decay building marker; null = no highlight.
+// Mirrors the structures-list thresholds (red <24h / overdue, yellow <72h).
+function decayWarnStyle (hours) {
+  if (hours === null) return null
+  if (hours < 24) return { color: '#ff4d4d', weight: 3, level: 'red' }    // urgent / overdue
+  if (hours < 72) return { color: '#ffb020', weight: 3, level: 'yellow' } // soon
+  return null
+}
+
+// Short decay label for tooltips: "12 ч" / "5 дн" / "просрочено".
+function decayShortLabel (hours) {
+  if (hours <= 0) return 'просрочено'
+  return hours < 48 ? Math.round(hours) + ' ч' : Math.round(hours / 24) + ' дн'
+}
+
+// Min decay per owner across only the markers actually drawn on the active map,
+// so the structures list always agrees with the highlighted markers (a clan's
+// decaying decorative placeables that aren't rendered no longer show "overdue").
+function computeGroupDecay () {
+  decayByGroup = {}
+  allMarkersData.forEach(function (m) {
+    if (!isOnActiveMap(m.x)) return
+    var h = markerDecayHours(m)
+    if (h === null) return
+    var gid = m.guild_id || m.char_id || m.owner
+    if (gid == null) return
+    if (decayByGroup[gid] === undefined || h < decayByGroup[gid]) decayByGroup[gid] = h
+  })
+}
+
+// Decay (ветшание) label + colour for an owner. Uses the min over its rendered
+// markers; falls back to the backend per-owner flag only to report "protected".
+function getDecayInfo (ownerId) {
+  var h = decayByGroup[ownerId]
+  if (h !== undefined) {
+    if (h <= 0) return { cls: 'red', label: 'Просрочено' }
+    var label = h < 48 ? Math.round(h) + ' ч' : Math.round(h / 24) + ' дн'
+    var cls = h < 24 ? 'red' : (h < 72 ? 'yellow' : 'green')
+    return { cls: cls, label: 'ветшание: ' + label }
+  }
   var d = decayByOwner[ownerId]
-  if (!d || d.protected || d.hours === null) return Infinity
-  return d.hours
+  if (d && d.protected) return { cls: 'green', label: 'Защищено' }
+  return { cls: 'grey', label: '—' }
+}
+
+// Numeric decay key for sorting; unknown/protected sort last (Infinity).
+function decayHours (ownerId) {
+  var h = decayByGroup[ownerId]
+  return (h === undefined) ? Infinity : h
 }
 
 function updateSortButtons () {
@@ -851,6 +1241,74 @@ function updateSortButtons () {
     var active = clanSortMode === m
     $(this).toggleClass('active', active).text(labels[m] + (active ? arrow : ''))
   })
+}
+
+// True if any roster member of this guild matches the search query.
+function rosterMatches (gid, q) {
+  var r = guildRosters[gid]
+  if (!r) return false
+  for (var i = 0; i < r.length; i++) {
+    if (r[i].name && r[i].name.toLowerCase().indexOf(q) !== -1) return true
+  }
+  return false
+}
+
+// Inner roster (member list) markup for a guild; '' for lone players / empty.
+function rosterHtml (gid) {
+  var r = guildRosters[gid]
+  if (!r || !r.length) return ''
+  var MAX = 60
+  var rows = ''
+  r.slice(0, MAX).forEach(function (m) {
+    var dotCls = m.online ? 'green' : getActivityInfo(m.lastSeen).cls
+    rows += '<div class="cr-member">' +
+      '<span class="clan-act-dot ' + dotCls + '"></span>' +
+      '<span class="cr-name">' + escapeHtml(m.name) + '</span>' +
+      (m.level ? '<span class="cr-lvl">' + escapeHtml(String(m.level)) + '</span>' : '') +
+    '</div>'
+  })
+  if (r.length > MAX) rows += '<div class="cr-more">… +' + (r.length - MAX) + '</div>'
+  var head = r.length + ' ' + (language.phrases['ui.members'] || 'members')
+  return '<div class="clan-roster-head">' + escapeHtml(head) + '</div>' +
+         '<div class="clan-roster-list">' + rows + '</div>'
+}
+
+// Singleton roster tooltip, appended to <body> so it escapes the side panel's
+// overflow:hidden / scroll clipping. Positioned next to the hovered clan item.
+function rosterTipEl () {
+  var el = document.getElementById('clan-roster-tip')
+  if (!el) {
+    el = document.createElement('div')
+    el.id = 'clan-roster-tip'
+    el.className = 'clan-roster-tip'
+    el.addEventListener('mouseenter', function () { el.style.display = 'block' })
+    el.addEventListener('mouseleave', hideRosterTip)
+    document.body.appendChild(el)
+  }
+  return el
+}
+
+function showRosterTip (anchor, gid) {
+  var html = rosterHtml(gid)
+  if (!html) return
+  var el = rosterTipEl()
+  el.innerHTML = html
+  el.style.display = 'block'
+  var r = anchor.getBoundingClientRect()
+  var w = el.offsetWidth, h = el.offsetHeight
+  // Prefer the right side; flip to the left if it would overflow the viewport.
+  var left = r.right + 8
+  if (left + w > window.innerWidth - 8) left = r.left - w - 8
+  if (left < 8) left = 8
+  var top = r.top
+  if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8)
+  el.style.left = left + 'px'
+  el.style.top = top + 'px'
+}
+
+function hideRosterTip () {
+  var el = document.getElementById('clan-roster-tip')
+  if (el) el.style.display = 'none'
 }
 
 function rebuildClanFilterMenu () {
@@ -903,7 +1361,7 @@ function rebuildClanFilterMenu () {
 
   // Clan rows
   groupData.forEach(function (g) {
-    if (q && g.name.toLowerCase().indexOf(q) === -1) return
+    if (q && g.name.toLowerCase().indexOf(q) === -1 && !rosterMatches(g.id, q)) return
     var act = getDecayInfo(g.id)
     var isActive = clanFilter.indexOf(g.id) !== -1
     var item = $('<div>')
@@ -921,6 +1379,11 @@ function rebuildClanFilterMenu () {
         '</div>'
       )
       .on('click', function () { selectClanFilter(g.id) })
+    if (guildRosters[g.id] && guildRosters[g.id].length) {
+      var gid = g.id
+      item.on('mouseenter', function () { showRosterTip(this, gid) })
+      item.on('mouseleave', hideRosterTip)
+    }
     menu.append(item)
   })
 }
@@ -1097,8 +1560,21 @@ function getPlayers () {
     playersData = data.data
     playerLastOnline = {}
     guildLastOnline = {}
+    guildRosters = {}
 
     data.data.forEach(function (player) {
+      // Roster: every guild member (regardless of last_online presence).
+      if (player.guild_id && player.guild_id !== 'NULL') {
+        if (!guildRosters[player.guild_id]) guildRosters[player.guild_id] = []
+        var ts0 = player.last_online ? new Date(player.last_online.replace(' ', 'T') + 'Z').getTime() : null
+        guildRosters[player.guild_id].push({
+          name: player.char_name || '?',
+          level: player.level || null,
+          online: player.online == 1,
+          lastSeen: isNaN(ts0) ? null : ts0
+        })
+      }
+
       if (!player.last_online) return
       var ts = new Date(player.last_online.replace(' ', 'T') + 'Z').getTime()
       if (isNaN(ts)) return
@@ -1112,5 +1588,16 @@ function getPlayers () {
         }
       }
     })
+
+    // Sort each roster: online first, then most-recently-seen, then name.
+    Object.keys(guildRosters).forEach(function (gid) {
+      guildRosters[gid].sort(function (a, b) {
+        if (a.online !== b.online) return a.online ? -1 : 1
+        if ((b.lastSeen || 0) !== (a.lastSeen || 0)) return (b.lastSeen || 0) - (a.lastSeen || 0)
+        return a.name.localeCompare(b.name)
+      })
+    })
+
+    rebuildClanFilterMenu()
   })
 }

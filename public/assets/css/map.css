@@ -364,6 +364,9 @@ html, body {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 2px 9px rgba(0, 0, 0, 0.5);
   display: flex; align-items: center; justify-content: center;
 }
+/* Decay warning ring: cluster contains decaying (yellow <72h / red <24h) blocks */
+.cluster-icon.cluster-warn-yellow { border-color: #ffb020; box-shadow: 0 0 0 2px #ffb020, 0 2px 9px rgba(0, 0, 0, 0.5); }
+.cluster-icon.cluster-warn-red    { border-color: #ff4d4d; box-shadow: 0 0 0 2px #ff4d4d, 0 2px 9px rgba(0, 0, 0, 0.5); }
 
 .cluster-tooltip table { font-size: 13px; border-collapse: collapse; font-family: var(--font-ui); }
 .cluster-tooltip td, .cluster-tooltip th { padding: 3px 9px; }
@@ -464,6 +467,7 @@ html, body {
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.12s;
+  position: relative;
 }
 .clan-item-expanded:hover { background: var(--bg-card-hover); }
 .clan-item-expanded:hover .clan-exp-name { color: var(--text-bright); }
@@ -492,6 +496,119 @@ html, body {
 .clan-act-label.yellow { color: var(--warning); }
 .clan-act-label.grey   { color: var(--text-muted); }
 .clan-act-label.red    { color: var(--danger); }
+
+/* Guild roster popover — appended to <body>, positioned by JS on hover so it
+   escapes the side panel's overflow clipping. */
+.clan-roster-tip {
+  display: none;
+  position: fixed;
+  width: 240px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  border-radius: 8px;
+  padding: 8px 10px;
+  z-index: 3000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.clan-roster-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.cr-member { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.cr-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cr-lvl { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.cr-more { font-size: 11px; color: var(--text-muted); padding-top: 4px; }
+
+/* Right-click context menu (appended to <body>, positioned by JS) */
+.ctx-menu {
+  display: none;
+  position: fixed;
+  min-width: 190px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  border-radius: 8px;
+  padding: 4px;
+  z-index: 3000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.ctx-item {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ctx-item:hover { background: var(--bg-card-hover); color: var(--text-bright); }
+.ctx-item.ctx-disabled {
+  color: var(--text-muted);
+  opacity: 0.5;
+  cursor: default;
+}
+.ctx-item.ctx-disabled:hover { background: transparent; color: var(--text-muted); }
+
+/* Login modal */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: center; justify-content: center; z-index: 4000;
+}
+.modal {
+  background: var(--bg-card); border: 1px solid var(--border-hover);
+  border-radius: 10px; padding: 20px; width: 300px;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.modal-title { font-size: 16px; font-weight: 700; color: var(--text-bright); }
+.modal-close { background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; line-height: 1; }
+.modal-close:hover { color: var(--text-bright); }
+.login-error { color: var(--danger); font-size: 12px; min-height: 14px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.modal-btn {
+  padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border-hover);
+  background: var(--bg-card-hover); color: var(--text-secondary); cursor: pointer; font-size: 13px;
+}
+.modal-btn:hover { color: var(--text-bright); }
+.modal-btn-primary { background: var(--link); color: #0f1419; border-color: var(--link); font-weight: 600; }
+
+/* Icon picker (add-marker modal) */
+.icon-picker {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;
+  max-height: 240px; overflow-y: auto; padding: 4px;
+  background: var(--bg-page); border: 1px solid var(--border); border-radius: 6px;
+}
+.icon-opt {
+  display: flex; align-items: center; justify-content: center;
+  padding: 4px; background: var(--bg-card-hover); border: 2px solid transparent;
+  border-radius: 6px; cursor: pointer;
+}
+.icon-opt:hover { border-color: var(--border-hover); }
+.icon-opt.selected { border-color: var(--link); }
+.icon-opt img { width: 28px; height: 28px; }
+
+/* Markers panel list */
+.markers-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+.marker-item {
+  display: flex; align-items: center; gap: 9px; padding: 7px 6px;
+  border-radius: 6px; cursor: pointer;
+}
+.marker-item:hover { background: var(--bg-card-hover); }
+.marker-item-icon { width: 22px; height: 22px; flex-shrink: 0; }
+.marker-item-label { flex: 1; font-size: 14px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.marker-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; }
+.marker-del:hover { color: var(--danger); }
 .clan-count-badge {
   font-family: var(--font-mono);
   font-size: 11px;

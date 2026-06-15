@@ -27,21 +27,14 @@ describe('createServerAccessMiddleware', () => {
     expect(next).not.toHaveBeenCalled()
   })
 
-  test('returns 403 when user lacks access to the requested server', () => {
+  test('allows access to any existing server (viewing is public)', () => {
     const { req, res, next } = makeReqRes('s2', ['s1'])
-    mw(req, res, next)
-    expect(res.statusCode).toBe(403)
-    expect(next).not.toHaveBeenCalled()
-  })
-
-  test('allows access when user has wildcard (*)', () => {
-    const { req, res, next } = makeReqRes('s1', ['*'])
     mw(req, res, next)
     expect(next).toHaveBeenCalled()
   })
 
-  test('allows access when user explicitly lists the serverId', () => {
-    const { req, res, next } = makeReqRes('s2', ['s1', 's2'])
+  test('allows access to another existing server', () => {
+    const { req, res, next } = makeReqRes('s1', [])
     mw(req, res, next)
     expect(next).toHaveBeenCalled()
   })

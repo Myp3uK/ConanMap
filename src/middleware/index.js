@@ -1,11 +1,11 @@
 import applicationMiddleware from './app'
-import authMiddleware from './auth'
+import sessionMiddleware from './session'
 import languageMiddleware from './language'
 import staticMiddleware from './static'
 
 const middleware = (app) => {
   applicationMiddleware(app)
-  authMiddleware(app)
+  sessionMiddleware(app)
   languageMiddleware(app)
   staticMiddleware(app)
 }

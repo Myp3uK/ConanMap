@@ -1,7 +1,13 @@
-import { Router } from 'express'
+import path from 'path'
+import express, { Router } from 'express'
 import config from '../../config'
 import serverAccessMiddleware from '../../middleware/serverAccess'
+import requireAdmin from '../../middleware/requireAdmin'
 import snapshotService from '../../services/snapshot'
+import { verifyPassword, signToken, SESSION_COOKIE } from '../../services/auth'
+import { listMarkers, addMarker, removeMarker, listIcons } from '../../services/markers'
+
+const VALID_MAPS = ['exiledlands', 'siptah']
 
 const entityRoutes = [
   { path: 'all',             key: 'all' },
@@ -30,14 +36,35 @@ const entityRoutes = [
 export default function buildApiRouter() {
   const router = Router()
 
+  // ── Auth: cookie session login (viewing is public; this gates admin actions) ──
+  router.post('/login', express.json(), (req, res) => {
+    const { username, password } = req.body || {}
+    const stored = username ? config.admins.get(username) : null
+    if (!stored || !verifyPassword(password || '', stored)) {
+      return res.status(401).json({ error: 'Invalid credentials' })
+    }
+    res.cookie(SESSION_COOKIE, signToken(username), {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    })
+    res.json({ admin: true, username })
+  })
+
+  router.post('/logout', (req, res) => {
+    res.clearCookie(SESSION_COOKIE)
+    res.json({ admin: false })
+  })
+
+  router.get('/me', (req, res) => {
+    res.json({ admin: !!res.locals.isAdmin, username: res.locals.adminUser })
+  })
+
   router.get('/servers', (req, res) => {
-    const userServers = res.locals.user?.servers ?? ['*']
-    const list = config.servers
-      .filter(s => userServers[0] === '*' || userServers.includes(s.id))
-      .map(s => {
-        const snap = snapshotService.get(s.id)
-        return { id: s.id, name: s.name, timestamp: snap?.timestamp ?? null, refreshing: snap?.refreshing ?? false }
-      })
+    const list = config.servers.map(s => {
+      const snap = snapshotService.get(s.id)
+      return { id: s.id, name: s.name, timestamp: snap?.timestamp ?? null, refreshing: snap?.refreshing ?? false }
+    })
     res.json(list)
   })
 
@@ -48,10 +75,40 @@ export default function buildApiRouter() {
     })
   })
 
-  // Per-owner decay timers (object: ownerId -> { hours, protected })
+  // ── Custom markers (admin-placed) ──────────────────────────────────────────
+  router.get('/marker-icons', (req, res) => {
+    res.json({ icons: listIcons() })
+  })
+
+  router.get('/:serverId/custom-markers', serverAccessMiddleware, (req, res) => {
+    res.json({ data: listMarkers(req.params.serverId) })
+  })
+
+  router.post('/:serverId/custom-markers', serverAccessMiddleware, requireAdmin, express.json(), (req, res) => {
+    const { map, x, y, icon, label } = req.body || {}
+    if (!VALID_MAPS.includes(map)) return res.status(400).json({ error: 'Invalid map' })
+    if (!Number.isFinite(+x) || !Number.isFinite(+y)) return res.status(400).json({ error: 'Invalid coordinates' })
+    const safeIcon = path.basename(String(icon || ''))
+    if (!listIcons().includes(safeIcon)) return res.status(400).json({ error: 'Unknown icon' })
+    const safeLabel = String(label || '').trim().slice(0, 80)
+    const marker = addMarker(req.params.serverId, { map, x: +x, y: +y, icon: safeIcon, label: safeLabel })
+    res.json(marker)
+  })
+
+  router.delete('/:serverId/custom-markers/:id', serverAccessMiddleware, requireAdmin, (req, res) => {
+    const ok = removeMarker(req.params.serverId, req.params.id)
+    res.status(ok ? 200 : 404).json({ ok })
+  })
+
+  // Decay timers: per-owner (ownerId -> { hours, protected }) and per building
+  // object (objectId -> hoursLeft) for highlighting individual map markers.
   router.get('/:serverId/decay', serverAccessMiddleware, (req, res) => {
     const snap = snapshotService.get(req.params.serverId)
-    res.json({ data: snap?.data.decay ?? {}, update: snap?.timestamp ?? null })
+    res.json({
+      data: snap?.data.decay ?? {},
+      byObject: snap?.data.decayByObject ?? {},
+      update: snap?.timestamp ?? null
+    })
   })
 
   return router

@@ -109,57 +109,112 @@ function transformPippiThespians(rows) {
   })
 }
 
+// SQL-style LIKE matcher (supports % = any run, _ = one char), case-insensitive.
+function likeMatch (text, pattern) {
+  const rx = '^' + pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/%/g, '.*').replace(/_/g, '.') + '$'
+  return new RegExp(rx, 'i').test(text || '')
+}
+
 // ── Decay timer (ветшание) ───────────────────────────────────────────────────
-// Per-owner most-urgent decay, ported from the reference C# (ConanDb.cs):
+// Decay model, ported from the reference C# (ConanDb.cs):
 //   serverruntime  = current server time in seconds (dw_settings)
 //   DecayTimestamp = 16-byte blob, float32 LE at offset 12 = decay_at (server-seconds)
 //   DecayDisabled  = last byte 0x01 => decay off (protected)
 //   hours_left     = (decay_at - serverruntime) / 3600
-// Result: { [ownerId]: { hours: <min hours_left|null>, protected: <bool> } }
-function computeDecay (db) {
+// Guilds whose name matches an adminGuildPatterns entry are always protected.
+
+const round1 = n => Math.round(n * 10) / 10
+
+// Read the raw decay context once (shared by the per-owner and per-object views).
+function decayContext (db, adminGuildPatterns) {
+  let serverRuntime = 0
+  const rt = db.prepare("SELECT CAST(value AS REAL) AS v FROM dw_settings WHERE name='serverruntime'").get()
+  if (rt && rt.v != null) serverRuntime = Number(rt.v)
+
+  // Admin guilds (by name pattern) — their owner ids are forced protected.
+  const adminOwners = new Set()
+  const patterns = adminGuildPatterns || []
+  if (patterns.length) {
+    for (const g of db.prepare('SELECT guildId, name FROM guilds').all()) {
+      if (g.name && patterns.some(p => likeMatch(g.name, p))) adminOwners.add(g.guildId)
+    }
+  }
+
+  const ownerOf = new Map()
+  for (const r of db.prepare('SELECT object_id, owner_id FROM buildings WHERE owner_id <> 0').all()) {
+    ownerOf.set(r.object_id, r.owner_id)
+  }
+
+  const decayAt = new Map()
+  const protectedActors = new Set()
+  for (const r of db.prepare("SELECT object_id, value FROM properties WHERE name LIKE '%.DecayTimestamp'").all()) {
+    if (r.value == null) continue
+    const b = Buffer.isBuffer(r.value) ? r.value : Buffer.from(r.value)
+    if (b.length !== 16) { protectedActors.add(r.object_id); continue }
+    const ts = b.readFloatLE(12)
+    if (!Number.isFinite(ts) || ts <= 0 || ts >= 1e10) protectedActors.add(r.object_id)
+    else decayAt.set(r.object_id, ts)
+  }
+  for (const r of db.prepare("SELECT object_id, value FROM properties WHERE name LIKE '%.DecayDisabled'").all()) {
+    if (r.value == null) continue
+    const b = Buffer.isBuffer(r.value) ? r.value : Buffer.from(r.value)
+    if (b.length > 0 && b[b.length - 1] === 1) protectedActors.add(r.object_id)
+  }
+
+  return { serverRuntime, adminOwners, ownerOf, decayAt, protectedActors }
+}
+
+// Per-owner most-urgent decay: { [ownerId]: { hours: <min|null>, protected: <bool> } }
+function buildByOwner (ctx) {
+  const { serverRuntime, adminOwners, ownerOf, decayAt, protectedActors } = ctx
+  const byOwner = {}
+  for (const [objId, ownerId] of ownerOf) {
+    let e = byOwner[ownerId]
+    if (!e) e = byOwner[ownerId] = { hours: null, protected: true }
+    if (adminOwners.has(ownerId)) continue  // admin guild => stay protected, ignore timers
+    if (protectedActors.has(objId)) continue
+    const at = decayAt.get(objId)
+    if (at === undefined) continue          // no decay info => leave as protected
+    const hours = (at - serverRuntime) / 3600
+    e.protected = false
+    if (e.hours === null || hours < e.hours) e.hours = hours
+  }
+  for (const k of Object.keys(byOwner)) {
+    if (byOwner[k].hours !== null) byOwner[k].hours = round1(byOwner[k].hours)
+  }
+  return byOwner
+}
+
+// Per-object decay hours for non-protected building objects: { [objectId]: hoursLeft }.
+// Protected (admin / disabled / sentinel) and timer-less objects are omitted.
+function buildByObject (ctx) {
+  const { serverRuntime, adminOwners, ownerOf, decayAt, protectedActors } = ctx
+  const byObject = {}
+  for (const [objId, ownerId] of ownerOf) {
+    if (adminOwners.has(ownerId)) continue
+    if (protectedActors.has(objId)) continue
+    const at = decayAt.get(objId)
+    if (at === undefined) continue
+    byObject[objId] = round1((at - serverRuntime) / 3600)
+  }
+  return byObject
+}
+
+export function computeDecay (db, adminGuildPatterns = config.settings.adminGuildPatterns) {
   try {
-    let serverRuntime = 0
-    const rt = db.prepare("SELECT CAST(value AS REAL) AS v FROM dw_settings WHERE name='serverruntime'").get()
-    if (rt && rt.v != null) serverRuntime = Number(rt.v)
-
-    const ownerOf = new Map()
-    for (const r of db.prepare('SELECT object_id, owner_id FROM buildings WHERE owner_id <> 0').all()) {
-      ownerOf.set(r.object_id, r.owner_id)
-    }
-
-    const decayAt = new Map()
-    const protectedActors = new Set()
-    for (const r of db.prepare("SELECT object_id, value FROM properties WHERE name LIKE '%.DecayTimestamp'").all()) {
-      if (r.value == null) continue
-      const b = Buffer.isBuffer(r.value) ? r.value : Buffer.from(r.value)
-      if (b.length !== 16) { protectedActors.add(r.object_id); continue }
-      const ts = b.readFloatLE(12)
-      if (!Number.isFinite(ts) || ts <= 0 || ts >= 1e10) protectedActors.add(r.object_id)
-      else decayAt.set(r.object_id, ts)
-    }
-    for (const r of db.prepare("SELECT object_id, value FROM properties WHERE name LIKE '%.DecayDisabled'").all()) {
-      if (r.value == null) continue
-      const b = Buffer.isBuffer(r.value) ? r.value : Buffer.from(r.value)
-      if (b.length > 0 && b[b.length - 1] === 1) protectedActors.add(r.object_id)
-    }
-
-    const byOwner = {}
-    for (const [objId, ownerId] of ownerOf) {
-      let e = byOwner[ownerId]
-      if (!e) e = byOwner[ownerId] = { hours: null, protected: true }
-      if (protectedActors.has(objId)) continue
-      const at = decayAt.get(objId)
-      if (at === undefined) continue        // no decay info => leave as protected
-      const hours = (at - serverRuntime) / 3600
-      e.protected = false
-      if (e.hours === null || hours < e.hours) e.hours = hours
-    }
-    for (const k of Object.keys(byOwner)) {
-      if (byOwner[k].hours !== null) byOwner[k].hours = Math.round(byOwner[k].hours * 10) / 10
-    }
-    return byOwner
+    return buildByOwner(decayContext(db, adminGuildPatterns))
   } catch (e) {
     console.error('Decay computation failed:', e.message)
+    return {}
+  }
+}
+
+export function computeDecayByObject (db, adminGuildPatterns = config.settings.adminGuildPatterns) {
+  try {
+    return buildByObject(decayContext(db, adminGuildPatterns))
+  } catch (e) {
+    console.error('Decay-by-object computation failed:', e.message)
     return {}
   }
 }
@@ -225,6 +280,7 @@ export function createSnapshotService(servers) {
           thralls:        transformThralls(run(queries.thralls)),
           pippiThespians: transformPippiThespians(run(queries.pippiThespians)),
           decay:          computeDecay(db),
+          decayByObject:  computeDecayByObject(db),
         }
       } finally {
         db.close()

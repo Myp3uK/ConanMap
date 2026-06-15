@@ -1,6 +1,6 @@
 module.exports = {
   all: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -23,7 +23,7 @@ module.exports = {
     or ap.class like '%Pippi%')
   `,
   altars: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -31,7 +31,7 @@ module.exports = {
     and ap.class like '%BP_PL_Altar%'
   `,
   animalpens: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -39,7 +39,7 @@ module.exports = {
     and ap.class like '%BP_PL_Crafting_Station_AnimalPen%'
   `,
   buildings: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -48,7 +48,7 @@ module.exports = {
     or ap.class like '%BuildTriangleFoundation%')
   `,
   beds: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -57,7 +57,7 @@ module.exports = {
     or ap.class like '%BP_PL_Bed_%')
   `,
   campfires: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -66,7 +66,7 @@ module.exports = {
     or ap.class like '%BP_PL_Crafting_Bonfire%')
   `,
   chests: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -75,7 +75,7 @@ module.exports = {
     and ap.class not like '%BP_PL_Chest_Vault%'
   `,
   crabPots: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -83,7 +83,7 @@ module.exports = {
     and ap.class like '%BP_PL_Crafting_CrabPot%'
   `,
   crafting: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -97,7 +97,7 @@ module.exports = {
     and ap.class not like '%BP_PL_CraftingStation_WheelOfPain%'
   `,
   fishNets: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -105,7 +105,7 @@ module.exports = {
     and ap.class like '%BP_PL_Crafting_FishNet%'
   `,
   mapRooms: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -136,7 +136,7 @@ module.exports = {
     where ap.class like '%pippi_mob%'
   `,
   pippiAll: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -155,7 +155,7 @@ module.exports = {
     order by last_online desc
   `,
   thrones: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -163,7 +163,7 @@ module.exports = {
     and ap.class like '%BP_PL_Chair_Throne%'
   `,
   trebuchets: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -171,7 +171,7 @@ module.exports = {
     and ap.class like '%Trebuchet_V2%'
   `,
   vaults: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -179,7 +179,7 @@ module.exports = {
     and ap.class like '%BP_PL_Chest_Vault%'
   `,
   waterWells: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id
@@ -187,7 +187,7 @@ module.exports = {
     and ap.class like '%BP_PL_Water_Well%'
   `,
   wheelsOfPain: `
-    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id from buildings as b
+    select ap.class, ap.x, ap.y, ap.z, g.name as guild_name, g.guildid as guild_id, c.char_name, c.id as char_id, b.owner_id, b.object_id as object_id from buildings as b
     left outer join actor_position as ap on b.object_id = ap.id
     left outer join guilds as g on g.guildid = b.owner_id
     left outer join characters as c on c.id = b.owner_id

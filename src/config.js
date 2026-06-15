@@ -5,6 +5,14 @@ import ini from 'ini'
 const DEFAULT_PORT = 3001
 const DEFAULT_LANGUAGE = 'en'
 const DEFAULT_HOST = '127.0.0.1'
+// Guild-name LIKE patterns whose owners are treated as decay-protected (admin builds).
+const DEFAULT_ADMIN_GUILDS = ['%ADMIN%', '%Админ%']
+
+function parseAdminGuilds(raw) {
+  if (raw == null || String(raw).trim() === '') return DEFAULT_ADMIN_GUILDS
+  const list = String(raw).split(',').map(s => s.trim()).filter(Boolean)
+  return list.length ? list : DEFAULT_ADMIN_GUILDS
+}
 
 export function parseConfig(rawIni) {
   const parsed = ini.parse(rawIni)
@@ -16,7 +24,9 @@ export function parseConfig(rawIni) {
     port: Number.isFinite(parsedPort) ? parsedPort : DEFAULT_PORT,
     host: parsed.SETTINGS?.host || DEFAULT_HOST,
     // seconds between automatic data refreshes; 0 (or unset) disables auto-refresh
-    autoRefresh: Number.isFinite(parsedAutoRefresh) && parsedAutoRefresh > 0 ? parsedAutoRefresh : 0
+    autoRefresh: Number.isFinite(parsedAutoRefresh) && parsedAutoRefresh > 0 ? parsedAutoRefresh : 0,
+    // comma-separated guild-name LIKE patterns whose buildings skip the decay timer
+    adminGuildPatterns: parseAdminGuilds(parsed.SETTINGS?.admin_guilds)
   }
 
   const servers = []
@@ -41,6 +51,15 @@ export function parseConfig(rawIni) {
     })
   }
 
+  // [AUTH] — admin accounts (username = scrypt hash). Gates write/admin actions;
+  // viewing is public. Validated at startup (see conan-exiles-admin-map.js).
+  const admins = new Map()
+  if (parsed.AUTH) {
+    for (const [username, value] of Object.entries(parsed.AUTH)) {
+      admins.set(username, String(value))
+    }
+  }
+
   const users = new Map()
   if (parsed.USERS) {
     for (const [username, value] of Object.entries(parsed.USERS)) {
@@ -58,7 +77,7 @@ export function parseConfig(rawIni) {
     }
   }
 
-  return { settings, servers, users }
+  return { settings, servers, users, admins }
 }
 
 const configFile = join(process.cwd(), 'conan-exiles-admin-map.ini')
