@@ -1,85 +1,111 @@
-# Публикация через Caddy (HTTPS)
+# Публикация через Caddy / Publishing with Caddy
 
-Как открыть карту публично по HTTPS через [Caddy](https://caddyserver.com/) — reverse proxy
-с автоматическим Let's Encrypt.
+[Русский](#русский) · [English](#english)
 
-## Почему всё просто
+---
 
-- **HTTP API только для чтения.** Фронтенд берёт данные через GET-эндпоинты
-  (`/api/<id>/players`, `/api/<id>/all` и т.д.). Записывающего эндпоинта обновления **нет** —
-  его убрали, обновление делается автоматически (`auto_refresh`).
-- Поэтому **ничего блокировать в Caddy не нужно** — посетитель физически не может изменить данные.
-- `host = 127.0.0.1` (по умолчанию) — приложение слушает только localhost и снаружи напрямую
-  недоступно. Наружу торчит только Caddy. Дополнительный файрвол не требуется.
-- Данные держатся свежими настройкой `auto_refresh` в `[SETTINGS]` (в секундах; `0` — выключено).
+## Русский
 
-## Требования
+Открыть карту по HTTPS через [Caddy](https://caddyserver.com/) (reverse proxy с автоматическим Let's Encrypt).
 
-- Домен (например `map.example.com`), A/AAAA-запись которого указывает на IP сервера.
-- Открыты входящие порты **80** и **443** (Caddy сам получит и продлит TLS-сертификат).
-- Приложение запущено и слушает `127.0.0.1:3001` (значение `host`/`port` из `.ini`).
-- Установлен Caddy: https://caddyserver.com/docs/install (на Windows — `winget install CaddyServer.Caddy`).
+### 1. Установка Caddy
 
-## Caddyfile
+Windows:
+```powershell
+winget install CaddyServer.Caddy
+```
+Или скачать с https://caddyserver.com/download. Проверка:
+```powershell
+caddy version
+```
+
+### 2. Настройка карты
+
+В `conan-exiles-admin-map.ini` рядом с приложением:
+```ini
+[SETTINGS]
+host = 127.0.0.1     ; слушать локально — Caddy проксирует на этот адрес
+port = 3001
+auto_refresh = 300   ; авто-обновление данных, секунд
+```
+Запустите приложение (`conan-exiles-admin-map.exe` или `npm start`). Оно должно отвечать на `http://127.0.0.1:3001`.
+
+### 3. Открытие портов
+
+- DNS-запись вашего домена (например `map.example.com`) должна указывать на IP сервера.
+- Откройте входящие порты **80** и **443** (через них Caddy получает сертификат и принимает трафик):
+```powershell
+New-NetFirewallRule -DisplayName "Caddy HTTP"  -Direction Inbound -Protocol TCP -LocalPort 80  -Action Allow
+New-NetFirewallRule -DisplayName "Caddy HTTPS" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow
+```
+
+### 4. Запуск
 
 Создайте файл `Caddyfile`:
-
 ```caddy
 map.example.com {
     encode zstd gzip
     reverse_proxy 127.0.0.1:3001
 }
 ```
-
-Запуск:
-
+Запустите:
 ```powershell
-caddy run --config Caddyfile          # на переднем плане (для проверки)
-# или как фоновый сервис:
+caddy run --config Caddyfile      # на переднем плане
+# или фоном:
 caddy start --config Caddyfile
 ```
+Caddy сам выпустит HTTPS-сертификат при первом обращении. Откройте `https://map.example.com`.
 
-Caddy сам выпустит HTTPS-сертификат при первом обращении к домену.
+---
 
-## Если host = 0.0.0.0
+## English
 
-По умолчанию приложение слушает только `127.0.0.1`, и порт 3001 снаружи недоступен.
-Если вы намеренно поставили `host = 0.0.0.0` (слушать все интерфейсы), закройте порт 3001
-от входящих извне, чтобы в обход Caddy на него не ходили напрямую:
+Serve the map over HTTPS with [Caddy](https://caddyserver.com/) (reverse proxy with automatic Let's Encrypt).
 
+### 1. Install Caddy
+
+Windows:
 ```powershell
-New-NetFirewallRule -DisplayName "Block ConanMap 3001 external" `
-  -Direction Inbound -Protocol TCP -LocalPort 3001 -Action Block
+winget install CaddyServer.Caddy
+```
+Or download from https://caddyserver.com/download. Verify:
+```powershell
+caddy version
 ```
 
-## Авто-обновление данных
+### 2. Configure the map
 
-Отдельная задача по расписанию не нужна — приложение само перечитывает `game.db` по настройке
-`auto_refresh` в `[SETTINGS]`. Например, `auto_refresh = 300` обновляет данные каждые 5 минут.
-Интерфейс подтягивает свежие данные сам (опрашивает сервер раз в минуту).
+In `conan-exiles-admin-map.ini` next to the app:
+```ini
+[SETTINGS]
+host = 127.0.0.1     ; listen locally — Caddy proxies to this address
+port = 3001
+auto_refresh = 300   ; automatic data refresh, seconds
+```
+Start the app (`conan-exiles-admin-map.exe` or `npm start`). It should respond on `http://127.0.0.1:3001`.
 
-## Опционально: закрыть весь сайт паролем
+### 3. Open the ports
 
-Если карта должна быть доступна только своим (не публично), есть два пути:
+- Point your domain's DNS record (e.g. `map.example.com`) at the server's IP.
+- Open inbound ports **80** and **443** (Caddy uses them for the certificate and traffic):
+```powershell
+New-NetFirewallRule -DisplayName "Caddy HTTP"  -Direction Inbound -Protocol TCP -LocalPort 80  -Action Allow
+New-NetFirewallRule -DisplayName "Caddy HTTPS" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow
+```
 
-1. Встроенная авторизация приложения — добавьте секцию `[USERS]` в `conan-exiles-admin-map.ini`
-   (см. основной README). Caddy при этом — просто HTTPS-прокси.
-2. Пароль на стороне Caddy для всего сайта:
+### 4. Run
 
-   ```caddy
-   map.example.com {
-       encode zstd gzip
-       basic_auth {
-           admin <bcrypt-хэш-пароля>
-       }
-       reverse_proxy 127.0.0.1:3001
-   }
-   ```
-
-   Хэш сгенерировать: `caddy hash-password`.
-
-## Проверка
-
-1. `caddy run` без ошибок; `https://map.example.com` открывается с валидным сертификатом.
-2. Карта грузится, видны метки, данные обновляются (метка «обновлено» меняется со временем).
-3. Прямой доступ снаружи к `http://IP:3001` — недоступен (`host = 127.0.0.1`).
+Create a `Caddyfile`:
+```caddy
+map.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3001
+}
+```
+Run it:
+```powershell
+caddy run --config Caddyfile      # foreground
+# or in the background:
+caddy start --config Caddyfile
+```
+Caddy issues the HTTPS certificate automatically on first request. Open `https://map.example.com`.
